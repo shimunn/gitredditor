@@ -2,17 +2,55 @@ use serde::de;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 use std::error::Error;
+use std::fmt;
 use std::iter;
 use std::iter::Chain;
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(PartialEq, Clone, Serialize, Deserialize, Debug)]
 pub struct Comment {
-    score: u32,
-    id: String,
-    created: f64,
-    permalink: String,
+    pub score: i32,
+    pub id: String,
+    pub created: f64,
+    pub permalink: String,
+    pub body: String,
     #[serde(deserialize_with = "false_or_val")]
-    edited: Option<u64>,
+    pub edited: Option<u64>,
+}
+
+pub enum CommentDelta {
+    Votes(i32),
+    Content,
+    New,
+}
+
+impl fmt::Display for CommentDelta {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use CommentDelta::*;
+        match self {
+            Votes(d) if d > &0 => write!(f, "Received +{} upvotes", d),
+            Votes(d) if d < &0 => write!(f, "Received {} downvotes", d),
+            Votes(_) => write!(f, "You shouln't see this one, if you do check the source"),
+            Content => write!(f, "Edited"),
+            New => write!(f, "Created"),
+        }
+    }
+}
+
+impl CommentDelta {
+    pub fn from(a: &Comment, b: &Comment) -> Vec<CommentDelta> {
+        assert_eq!(a.id, b.id);
+        //Assume that most comments don't change
+        let mut delta = Vec::with_capacity(0);
+        use CommentDelta::*;
+        if a.score != b.score {
+            delta.push(Votes(b.score - a.score))
+        }
+
+        if a.body != b.body {
+            delta.push(Content)
+        }
+        delta
+    }
 }
 
 fn false_or_val<'de, D>(deserializer: D) -> Result<Option<u64>, D::Error>
@@ -64,8 +102,7 @@ impl Iterator for Comments {
 
     fn next(&mut self) -> Option<Self::Item> {
         fn request_paged(url: &str) -> Result<(Vec<Comment>, Option<String>), Box<Error>> {
-            dbg!(("Requesting", url));
-            let comment_json = dbg!(reqwest::get(url)?.text()?);
+            let comment_json = reqwest::get(url)?.text()?;
             let comment_json: Value = serde_json::from_str(&comment_json)?;
             let data: &Value = &comment_json["data"];
             let continuation: Option<String> = match &data["after"] {
