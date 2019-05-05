@@ -1,6 +1,7 @@
-use serde::{Deserialize, Serialize};
+use serde::de;
+use serde::{Deserialize, Deserializer, Serialize};
+use serde_json::Value;
 use std::error::Error;
-
 use std::iter;
 use std::iter::Chain;
 
@@ -8,10 +9,31 @@ use std::iter::Chain;
 pub struct Comment {
     score: u32,
     id: String,
-    created: u64,
+    created: f64,
     permalink: String,
-    edited: bool,
+    #[serde(deserialize_with = "false_or_val")]
+    edited: Option<u64>,
 }
+
+fn false_or_val<'de, D>(deserializer: D) -> Result<Option<u64>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let val = Value::deserialize(deserializer)?;
+    use serde_json::Value::*;
+    Ok(match val {
+        Number(num) => num.as_u64(),
+        Bool(true) => Some(1),
+        _ => None,
+    })
+}
+
+/*
+#[derive(Serialize, Deserialize, Debug)]
+pub struct ListItem<T: for<'a> Deserialize<'a>> {
+ kind: String,
+ data: T,
+}*/
 
 pub struct Comments {
     pub url: String,
@@ -20,13 +42,20 @@ pub struct Comments {
 }
 
 impl Comments {
-    fn new<T: ToString>(url: T) -> Comments {
+    pub fn new<T: ToString>(url: T) -> Comments {
         let url = url.to_string();
         Comments {
             url: url,
             continuation: None,
             buffer: None,
         }
+    }
+
+    pub fn for_user<T: ToString>(name: T) -> Comments {
+        Self::new(format!(
+            "https://www.reddit.com/user/{}.json",
+            name.to_string()
+        ))
     }
 }
 
@@ -35,11 +64,28 @@ impl Iterator for Comments {
 
     fn next(&mut self) -> Option<Self::Item> {
         fn request_paged(url: &str) -> Result<(Vec<Comment>, Option<String>), Box<Error>> {
-            let comment_json = reqwest::get(url)?.text()?;
-
-            let continuation: Option<String> = unimplemented!();
-            let comments: Vec<Comment> = unimplemented!();
-            return Ok((comments, continuation));
+            dbg!(("Requesting", url));
+            let comment_json = dbg!(reqwest::get(url)?.text()?);
+            let comment_json: Value = serde_json::from_str(&comment_json)?;
+            let data: &Value = &comment_json["data"];
+            let continuation: Option<String> = match &data["after"] {
+                Value::String(after) => Some(after.clone()),
+                _ => None,
+            };
+            //Kinda ugly .clone()
+            //let comments: Vec<ListItem<Comment>> = serde_json::from_value(data["children"].clone())?;
+            if let Some(children) = data["children"].as_array() {
+                let comments = children
+                    .iter()
+                    .map(|li| serde_json::from_value::<Comment>(li["data"].clone()))
+                    .collect::<Result<Vec<_>, _>>();
+                comments
+                    .map(|comments| (comments, continuation))
+                    .map_err(|e| e.into())
+            } else {
+                Err("Parse err".into())
+            }
+            //return Ok((comments.iter().map(|li| li.data).collect(), continuation));
         }
 
         if let (Some(ref mut buffer), ref mut continuation, ref url) =
