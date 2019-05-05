@@ -1,0 +1,20 @@
+[Unit]
+Description=Mirrors reddit comments into a git repo
+After=network-online.target
+
+[Service]
+
+Environment=REDDIT_USERNAME=root
+Environment=ROOT_DIR=/srv/reddit
+
+RestartSec=7200
+
+ExecStart=/usr/bin/rkt --insecure-options=image run --dns 8.8.8.8 --volume volume-repo,kind=host,source=${ROOT_DIR}/${REDDIT_USERNAME} \
+                        docker://repo.shimun.net/shimun/gitredditor
+                        
+ExecStopPost=/bin/bash -c "cd ${ROOT_DIR}/${REDDIT_USERNAME} && /usr/bin/git push"
+
+
+
+[Install]
+WantedBy=multi-user.target
