@@ -16,11 +16,21 @@ pub struct Comment {
 pub struct Comments {
     pub url: String,
     continuation: Option<String>,
-    buffer: Box<Iterator<Item = Result<Comment, Box<Error>>>>,
+    buffer: Option<Box<Iterator<Item = Result<Comment, Box<Error>>>>>,
+}
+
+impl Comments {
+    fn new<T: ToString>(url: T) -> Comments {
+        let url = url.to_string();
+        Comments {
+            url: url,
+            continuation: None,
+            buffer: None,
+        }
+    }
 }
 
 impl Iterator for Comments {
-
     type Item = Result<Comment, Box<Error>>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -32,20 +42,34 @@ impl Iterator for Comments {
             return Ok((comments, continuation));
         }
 
-        if let Some(comment) = self.buffer.next() {
-            Some(comment)
+        if let (Some(ref mut buffer), ref mut continuation, ref url) =
+            (&mut self.buffer, &mut self.continuation, &self.url)
+        {
+            if let Some(comment) = buffer.next() {
+                Some(comment)
+            } else {
+                continuation.clone().and_then(|cont| {
+                    let page = request_paged(&(url.to_string() + "?after=" + &cont[..]));
+                    match page {
+                        Ok((comments, cont)) => {
+                            **continuation = cont;
+                            *buffer = Box::new(comments.into_iter().map(Ok))
+                        }
+                        Err(e) => *buffer = Box::new(iter::once(Err(e))),
+                    };
+                    buffer.next()
+                })
+            }
         } else {
-            self.continuation.clone().and_then(|cont| {
-                let page = request_paged(&self.url);
-                match page {
-                    Ok((comments, cont)) => {
-                        self.continuation = cont;
-                        self.buffer = Box::new(comments.into_iter().map(Ok))
-                    }
-                    Err(e) => self.buffer = Box::new(iter::once(Err(e))),
-                };
-                self.buffer.next()
-            })
+            let page = request_paged(&self.url);
+            match page {
+                Ok((comments, cont)) => {
+                    self.continuation = cont;
+                    self.buffer = Some(Box::new(comments.into_iter().map(Ok)))
+                }
+                Err(e) => self.buffer = Some(Box::new(iter::once(Err(e)))),
+            };
+            self.buffer.as_mut().and_then(|it| it.next())
         }
     }
 }
