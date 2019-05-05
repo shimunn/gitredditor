@@ -1,0 +1,27 @@
+kind: pipeline
+name: default
+
+steps:
+ - name: build
+   image: rust:1.34.1
+   commands:
+    - cargo build
+ - name: build_relase
+   image: rust:1.34.1
+   commands:
+    - cargo build --release
+   when:
+    event:    
+    - tag
+ - name: dockerize
+   image: plugins/docker
+   settings:
+    repo: gitredditor
+    registry: hub.docker.com
+    username:
+     from_secret: docker_username
+    password:
+     from_secret: docker_password
+   when:
+    event: 
+    - tag
