@@ -77,7 +77,7 @@ pub struct ListItem<T: for<'a> Deserialize<'a>> {
 pub struct Comments {
     pub url: String,
     continuation: Option<String>,
-    buffer: Option<Result<Box<Iterator<Item=Result<Comment, Box<Error>>>>, Box<Error>>>,
+    buffer: Option<Result<Box<Iterator<Item = Result<Comment, Box<Error>>>>, Box<Error>>>,
 }
 
 impl Comments {
@@ -126,34 +126,41 @@ impl Iterator for Comments {
             //return Ok((comments.iter().map(|li| li.data).collect(), continuation));
         }
 
-        if let (Some(ref mut buffer), ref mut continuation, ref url) =
-            (&mut self.buffer, &mut self.continuation, &self.url)
-        {
-            if let Some(comment) = buffer.next() {
-                Some(comment)
-            } else {
-                continuation.clone().and_then(|cont| {
-                    let page = request_paged(&(url.to_string() + "?after=" + &cont[..]));
-                    match page {
-                        Ok((comments, cont)) => {
-                            **continuation = cont;
-                            *buffer = Box::new(comments.into_iter().map(Ok))
-                        }
-                        Err(e) => *buffer = Box::new(iter::once(Err(e))),
-                    };
-                    buffer.next()
-                })
-            }
-        } else {
-            let page = request_paged(&self.url);
-            match page {
-                Ok((comments, cont)) => {
-                    self.continuation = cont;
-                    self.buffer = Some(Box::new(comments.into_iter().map(Ok)))
+        match (&mut self.buffer, &mut self.continuation, &self.url) {
+            (Some(Ok(ref mut buffer)), ref mut continuation, ref url) => {
+                if let Some(comment) = buffer.next() {
+                    Some(comment)
+                } else {
+                    continuation.clone().and_then(|cont| {
+                        let page = request_paged(&(url.to_string() + "?after=" + &cont[..]));
+                        match page {
+                            Ok((comments, cont)) => {
+                                **continuation = cont;
+                                *buffer = Box::new(comments.into_iter().map(Ok))
+                            }
+                            Err(e) => *buffer = Box::new(iter::once(Err(e))),
+                        };
+                        buffer.next()
+                    })
                 }
-                Err(e) => self.buffer = Some(Box::new(iter::once(Err(e)))),
-            };
-            self.buffer.as_mut().and_then(|it| it.next())
+            }
+            (None, _, _) => {
+                let page = request_paged(&self.url);
+                match page {
+                    Ok((comments, cont)) => {
+                        self.continuation = cont;
+                        self.buffer = Some(Ok(Box::new(comments.into_iter().map(Ok))))
+                    }
+                    Err(e) => self.buffer = Some(Err(e)),
+                };
+                let buf = self.buffer.as_mut()?;
+                if let Ok(ref mut buf) = buf {
+                    buf.next()
+                } else {
+                    None
+                }
+            }
+            (Some(Err(_)), _, _) => None,
         }
     }
 }

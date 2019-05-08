@@ -24,16 +24,12 @@ use crate::opts::*;
 fn main() {
     let opts = Opts::from_args();
     let comments = Comments::for_user(&opts.redditor);
-    let all = comments
-        .take(opts.fetch)
-        .filter_map(|c| c.ok())
-        .collect::<Vec<_>>();
 
     println!(
         "Hello, world! {:?}",
         update(
             &opts.repo.unwrap(),
-            &comments.take(opts.fetch).filter_map(|c| c.ok()),
+            comments.take(opts.fetch).filter_map(|c| c.ok()),
             &opts.redditor,
             &("reddit.com/u/".to_owned() + &opts.redditor),
             (opts.threshold, opts.thresholdp)
@@ -43,7 +39,7 @@ fn main() {
 
 fn update<'a>(
     repo: &PathBuf,
-    current: impl IntoIterator<Item = &'a Comment>,
+    current: impl IntoIterator<Item = Comment>,
     redditor: &str,
     email: &str,
     threshold: (u32, u8),
@@ -87,14 +83,13 @@ fn update<'a>(
             if delta.len() > 0 {
                 fs_write(&path, to_string_pretty(&comment)?)?;
                 commit_msg = delta.iter().map(|d| d.to_string()).collect::<Vec<_>>()[..].join("\n");
-                index.update_all(vec![&path], None)?;
-
+                //index.update_all(vec![&path], None)?;
                 updated += 1;
             }
         } else {
             create_dir_all((&path).parent().unwrap())?;
             fs_write(&path, to_string_pretty(&comment)?)?;
-            index.add_all(vec![&path], git2::IndexAddOption::DEFAULT, None)?;
+            //index.add_all(vec![&path], git2::IndexAddOption::DEFAULT, None)?;
             commit_msg = CommentDelta::New.to_string();
             updated += 1;
         }
@@ -135,7 +130,7 @@ fn update<'a>(
             git.commit(
                 Some("HEAD"),
                 &sig_backdate,
-                &sig_backdate,
+                &sig,
                 &commit_msg,
                 &tree,
                 &[&parent],
