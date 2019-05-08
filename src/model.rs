@@ -1,3 +1,4 @@
+use either::Either;
 use serde::de;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
@@ -76,7 +77,7 @@ pub struct ListItem<T: for<'a> Deserialize<'a>> {
 pub struct Comments {
     pub url: String,
     continuation: Option<String>,
-    buffer: Option<Box<Iterator<Item = Result<Comment, Box<Error>>>>>,
+    buffer: Option<Result<Box<Iterator<Item=Result<Comment, Box<Error>>>>, Box<Error>>>,
 }
 
 impl Comments {

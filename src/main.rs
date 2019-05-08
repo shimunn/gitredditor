@@ -9,11 +9,11 @@ use std::fmt;
 use std::fs::{create_dir_all, read_to_string, write as fs_write};
 use std::iter;
 use std::iter::Chain;
+use std::iter::IntoIterator;
 use std::path::{Path, PathBuf};
 use std::thread;
 use std::time::Duration;
 use std::time::UNIX_EPOCH;
-use std::iter::IntoIterator;
 
 mod model;
 mod opts;
@@ -24,24 +24,29 @@ use crate::opts::*;
 fn main() {
     let opts = Opts::from_args();
     let comments = Comments::for_user(&opts.redditor);
-    let all = comments.take(opts.fetch).filter_map(|c| c.ok()).collect::<Vec<_>>();
-    
+    let all = comments
+        .take(opts.fetch)
+        .filter_map(|c| c.ok())
+        .collect::<Vec<_>>();
+
     println!(
         "Hello, world! {:?}",
         update(
             &opts.repo.unwrap(),
-            &all,
+            &comments.take(opts.fetch).filter_map(|c| c.ok()),
             &opts.redditor,
-            &("reddit.com/u/".to_owned() + &opts.redditor)
+            &("reddit.com/u/".to_owned() + &opts.redditor),
+            (opts.threshold, opts.thresholdp)
         )
     );
 }
 
-fn update(
+fn update<'a>(
     repo: &PathBuf,
-    current: &Vec<Comment>,
+    current: impl IntoIterator<Item = &'a Comment>,
     redditor: &str,
     email: &str,
+    threshold: (u32, u8),
 ) -> Result<usize, Box<Error>> {
     let comment_path = |c: &Comment| {
         let mut p = repo.clone();
@@ -55,6 +60,8 @@ fn update(
     let git = Repository::open(&repo)?;
     let sig = Signature::now(redditor, email)?;
     let mut index = git.index()?;
+    let (threshold, threshold_percent) = threshold;
+    let threshold_percent = threshold_percent as f32;
     for comment in current.into_iter() {
         let path = comment_path(&comment);
         let path_rel = || {
@@ -67,7 +74,16 @@ fn update(
         if (&path).exists() {
             let content = read_to_string(&path)?;
             let old: Comment = serde_json::from_str(&content)?;
-            let delta = CommentDelta::from(&old, &comment);
+            let delta = CommentDelta::from(&old, &comment)
+                .into_iter()
+                .filter(|d| match d {
+                    CommentDelta::Votes(change) => {
+                        change.abs() as u32 > threshold
+                            && change.abs() as f32 > old.score as f32 * (threshold_percent / 100.0)
+                    }
+                    _ => true,
+                })
+                .collect::<Vec<_>>();
             if delta.len() > 0 {
                 fs_write(&path, to_string_pretty(&comment)?)?;
                 commit_msg = delta.iter().map(|d| d.to_string()).collect::<Vec<_>>()[..].join("\n");

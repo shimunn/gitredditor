@@ -4,15 +4,19 @@ After=network-online.target
 
 [Service]
 
-Environment=REDDIT_USERNAME=root
+#Default Environment=GITREDDITOR_CNT=20
+#Default Environment=GITREDDITOR_TH=5
+#Default Environment=GITREDDITOR_THP=5
+Environment=GITREDDITOR_U=root
 Environment=ROOT_DIR=/srv/reddit
 
 RestartSec=7200
+Restart=always
 
-ExecStart=/usr/bin/rkt --insecure-options=image run --dns 8.8.8.8 --volume volume-repo,kind=host,source=${ROOT_DIR}/${REDDIT_USERNAME} \
+ExecStart=/usr/bin/rkt --insecure-options=image run --dns 8.8.8.8 --volume volume-repo,kind=host,source=${ROOT_DIR}/${GITREDDITOR_U} \
                         docker://repo.shimun.net/shimun/gitredditor
                         
-ExecStopPost=/bin/bash -c "cd ${ROOT_DIR}/${REDDIT_USERNAME} && /usr/bin/git push"
+ExecStopPost=/bin/bash -c "cd ${ROOT_DIR}/${GITREDDITOR_U} && /usr/bin/git push"
 
 
 
