@@ -5,12 +5,9 @@ extern crate serde_derive;
 use git2::{Repository, Signature, Time as GitTime};
 use serde_json::to_string_pretty;
 use std::error::Error;
-use std::fmt;
 use std::fs::{create_dir_all, read_to_string, write as fs_write};
-use std::iter;
-use std::iter::Chain;
 use std::iter::IntoIterator;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::thread;
 use std::time::Duration;
 use std::time::UNIX_EPOCH;
@@ -140,6 +137,7 @@ fn update<'a>(
     Ok(updated)
 }
 
+#[allow(dead_code)]
 fn poll(interval: Duration, count: Option<u32>) {
     let mut it: u32 = 0;
     loop {

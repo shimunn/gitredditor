@@ -1,11 +1,8 @@
-use either::Either;
-use serde::de;
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Deserializer};
 use serde_json::Value;
 use std::error::Error;
 use std::fmt;
 use std::iter;
-use std::iter::Chain;
 
 #[derive(PartialEq, Clone, Serialize, Deserialize, Debug)]
 pub struct Comment {
