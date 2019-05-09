@@ -2,7 +2,8 @@ use serde::{Deserialize, Deserializer};
 use serde_json::Value;
 use std::error::Error;
 use std::fmt;
-use std::iter;
+use std::thread;
+use std::time::Duration;
 
 #[derive(PartialEq, Clone, Serialize, Deserialize, Debug)]
 pub struct Comment {
@@ -10,6 +11,7 @@ pub struct Comment {
     pub id: String,
     pub created: f64,
     pub permalink: String,
+    #[serde(default)]
     pub body: String,
     #[serde(deserialize_with = "false_or_val")]
     pub edited: Option<u64>,
@@ -75,6 +77,7 @@ pub struct Comments {
     pub url: String,
     continuation: Option<String>,
     buffer: Option<Result<Box<Iterator<Item = Result<Comment, Box<Error>>>>, Box<Error>>>,
+    no_it: usize,
 }
 
 impl Comments {
@@ -84,6 +87,7 @@ impl Comments {
             url: url,
             continuation: None,
             buffer: None,
+            no_it: 0,
         }
     }
 
@@ -100,11 +104,11 @@ impl Iterator for Comments {
 
     fn next(&mut self) -> Option<Self::Item> {
         fn request_paged(url: &str) -> Result<(Vec<Comment>, Option<String>), Box<Error>> {
-            let comment_json = reqwest::get(url)?.text()?;
+            let comment_json = reqwest::get(dbg!(url))?.text()?;
             let comment_json: Value = serde_json::from_str(&comment_json)?;
             let data: &Value = &comment_json["data"];
             let continuation: Option<String> = match &data["after"] {
-                Value::String(after) => Some(after.clone()),
+                Value::String(after) if after.len() > 0 => Some(after.clone()),
                 _ => None,
             };
             //Kinda ugly .clone()
@@ -123,41 +127,58 @@ impl Iterator for Comments {
             //return Ok((comments.iter().map(|li| li.data).collect(), continuation));
         }
 
-        match (&mut self.buffer, &mut self.continuation, &self.url) {
-            (Some(Ok(ref mut buffer)), ref mut continuation, ref url) => {
-                if let Some(comment) = buffer.next() {
-                    Some(comment)
-                } else {
-                    continuation.clone().and_then(|cont| {
-                        let page = request_paged(&(url.to_string() + "?after=" + &cont[..]));
-                        match page {
-                            Ok((comments, cont)) => {
-                                **continuation = cont;
-                                *buffer = Box::new(comments.into_iter().map(Ok))
-                            }
-                            Err(e) => *buffer = Box::new(iter::once(Err(e))),
-                        };
-                        buffer.next()
-                    })
+        let (ref mut buffer, ref mut continuation, ref mut no_it, ref url) = (
+            &mut self.buffer,
+            &mut self.continuation,
+            &mut self.no_it,
+            &self.url,
+        );
+        let mut fetch_lot = |buffer: &mut Option<
+            Result<Box<Iterator<Item = Result<Comment, Box<Error>>>>, Box<Error>>,
+        >,
+                             continuation: &mut Option<String>| {
+            let page = match continuation {
+                Some(ref cont) => request_paged(
+                    &(url.to_string() + "?after=" + &cont[..] + {
+                        if **no_it > 5 {
+                            thread::sleep(Duration::from_millis(100));
+                            "&limit=100"
+                        } else {
+                            ""
+                        }
+                    }),
+                ),
+                None => request_paged(url),
+            };
+            **no_it += 1;
+            match page {
+                Ok((comments, cont)) => {
+                    *continuation = cont;
+                    *buffer = Some(Ok(Box::new(comments.into_iter().map(Ok))));
                 }
+                Err(e) => *buffer = Some(Err(e)),
+            };
+        };
+        match buffer {
+            None => {
+                //Init
+                fetch_lot(buffer, continuation);
             }
-            (None, _, _) => {
-                let page = request_paged(&self.url);
-                match page {
-                    Ok((comments, cont)) => {
-                        self.continuation = cont;
-                        self.buffer = Some(Ok(Box::new(comments.into_iter().map(Ok))))
-                    }
-                    Err(e) => self.buffer = Some(Err(e)),
-                };
-                let buf = self.buffer.as_mut()?;
-                if let Ok(ref mut buf) = buf {
-                    buf.next()
-                } else {
-                    None
-                }
+            Some(Err(_)) => return None,
+            _ => (),
+        }
+
+        match buffer.as_mut().map(|buf| buf.as_mut().map(|it| it.next())) {
+            Some(Ok(Some(Err(e)))) => {
+                **buffer = Some(Err(e.description().into()));
+                Some(Err(e))
             }
-            (Some(Err(_)), _, _) => None,
+            Some(Ok(Some(Ok(i)))) => Some(Ok(i)),
+            Some(Ok(None)) if continuation.is_some() => {
+                fetch_lot(buffer, continuation);
+                self.next()
+            }
+            _ => None,
         }
     }
 }
