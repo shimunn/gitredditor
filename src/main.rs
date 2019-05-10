@@ -53,8 +53,10 @@ fn update<'a>(
     let git = Repository::open(&repo)?;
     let sig = Signature::now(redditor, email)?;
     let mut index = git.index()?;
+    index.read(true)?;
     let (threshold, threshold_percent) = threshold;
     let threshold_percent = threshold_percent as f32;
+    let mut parent = dbg!(git.find_commit(git.head()?.target().unwrap()))?;
     for comment in current.into_iter() {
         let path = comment_path(&comment);
         let path_rel = || {
@@ -95,8 +97,6 @@ fn update<'a>(
             let tree_id = index.write_tree()?;
             let tree = git.find_tree(tree_id)?;
 
-            let parent = dbg!(git.find_commit(git.head()?.target().unwrap()))?;
-
             let time = {
                 let created = UNIX_EPOCH + Duration::from_secs(comment.created as u64);
                 let edited = comment
@@ -124,7 +124,7 @@ fn update<'a>(
             )?;
 
             println!("Commiting: {}:\n{}", comment.id, commit_msg);
-            git.commit(
+            let commit = git.commit(
                 Some("HEAD"),
                 &sig_backdate,
                 &sig,
@@ -132,6 +132,7 @@ fn update<'a>(
                 &tree,
                 &[&parent],
             )?;
+            parent = git.find_commit(commit)?;
         }
     }
     Ok(updated)
