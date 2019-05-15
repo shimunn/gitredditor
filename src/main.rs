@@ -10,7 +10,7 @@ use std::iter::IntoIterator;
 use std::path::PathBuf;
 use std::thread;
 use std::time::Duration;
-use std::time::UNIX_EPOCH;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 mod model;
 mod opts;
@@ -53,10 +53,11 @@ fn update<'a>(
     let git = Repository::open(&repo)?;
     let sig = Signature::now(redditor, email)?;
     let mut index = git.index()?;
-    index.read(true)?;
+    index.read(false)?;
     let (threshold, threshold_percent) = threshold;
     let threshold_percent = threshold_percent as f32;
-    let mut parent = dbg!(git.find_commit(git.head()?.target().unwrap()))?;
+    let head = || dbg!(git.find_commit(git.head()?.target().unwrap()));
+    let mut parent = head()?;
     for comment in current.into_iter() {
         let path = comment_path(&comment);
         let path_rel = || {
@@ -64,15 +65,16 @@ fn update<'a>(
             p.set_extension("json");
             p
         };
-        let before = updated;
         let mut commit_msg = String::new();
-        if (&path).exists() {
+        let mut commit_timestamp: Option<SystemTime> = None;
+        let changed = if (&path).exists() {
             let content = read_to_string(&path)?;
             let old: Comment = serde_json::from_str(&content)?;
             let delta = CommentDelta::from(&old, &comment)
                 .into_iter()
                 .filter(|d| match d {
                     CommentDelta::Votes(change) => {
+                        commit_timestamp = Some(SystemTime::now());
                         change.abs() as u32 > threshold
                             && change.abs() as f32 > old.score as f32 * (threshold_percent / 100.0)
                     }
@@ -84,6 +86,9 @@ fn update<'a>(
                 commit_msg = delta.iter().map(|d| d.to_string()).collect::<Vec<_>>()[..].join("\n");
                 //index.update_all(vec![&path], None)?;
                 updated += 1;
+                true
+            } else {
+                false
             }
         } else {
             create_dir_all((&path).parent().unwrap())?;
@@ -91,40 +96,22 @@ fn update<'a>(
             //index.add_all(vec![&path], git2::IndexAddOption::DEFAULT, None)?;
             commit_msg = CommentDelta::New.to_string();
             updated += 1;
-        }
-        if before != updated {
+            true
+        };
+        if changed {
             index.add_path(&path_rel())?;
             let tree_id = index.write_tree()?;
             let tree = git.find_tree(tree_id)?;
 
-            let time = {
-                let created = UNIX_EPOCH + Duration::from_secs(comment.created as u64);
-                let edited = comment
-                    .edited
-                    .filter(|e| e > &1)
-                    .map(|e| UNIX_EPOCH + Duration::from_secs(e));
-                if let Some(edited) = edited {
-                    if edited > created {
-                        edited
-                    } else {
-                        created
-                    }
-                } else {
-                    created
-                }
-            };
+            let time = commit_timestamp.unwrap_or(comment.last_update());
 
-            let sig_backdate = Signature::new(
-                sig.name().unwrap(),
-                sig.email().unwrap(),
-                &GitTime::new(
-                    dbg!(time).duration_since(UNIX_EPOCH).unwrap().as_secs() as i64,
-                    0,
-                ),
-            )?;
+            let sig_backdate = Signature::new(sig.name().unwrap(), sig.email().unwrap(), &{
+                let dur = dbg!(time).duration_since(UNIX_EPOCH).unwrap();
+                GitTime::new(dur.as_secs() as i64, dur.subsec_millis() as i32)
+            })?;
 
             println!("Commiting: {}:\n{}", comment.id, commit_msg);
-            let commit = git.commit(
+            let _commit = git.commit(
                 Some("HEAD"),
                 &sig_backdate,
                 &sig,
@@ -132,7 +119,8 @@ fn update<'a>(
                 &tree,
                 &[&parent],
             )?;
-            parent = git.find_commit(commit)?;
+            parent = head()?; //git.find_commit(commit)?;
+            index.write()?;
         }
     }
     Ok(updated)

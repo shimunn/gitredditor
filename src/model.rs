@@ -3,7 +3,7 @@ use serde_json::Value;
 use std::error::Error;
 use std::fmt;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 #[derive(PartialEq, Clone, Serialize, Deserialize, Debug)]
 pub struct Comment {
@@ -15,6 +15,25 @@ pub struct Comment {
     pub body: String,
     #[serde(deserialize_with = "false_or_val")]
     pub edited: Option<u64>,
+}
+
+impl Comment {
+    pub fn last_update(&self) -> SystemTime {
+        let created = UNIX_EPOCH + Duration::from_secs(self.created as u64);
+        let edited = self
+            .edited
+            .filter(|e| e > &1)
+            .map(|e| UNIX_EPOCH + Duration::from_secs(e));
+        if let Some(edited) = edited {
+            if edited > created {
+                edited
+            } else {
+                created
+            }
+        } else {
+            created
+        }
+    }
 }
 
 pub enum CommentDelta {
