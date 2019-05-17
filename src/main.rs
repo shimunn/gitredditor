@@ -26,7 +26,7 @@ fn main() {
         "Hello, world! {:?}",
         update(
             &opts.repo.unwrap(),
-            comments.take(opts.fetch).filter_map(|c| c.ok()),
+            comments.take(opts.fetch).flatten(),
             &opts.redditor,
             &("reddit.com/u/".to_owned() + &opts.redditor),
             (opts.threshold, opts.thresholdp)
@@ -34,7 +34,7 @@ fn main() {
     );
 }
 
-fn update<'a>(
+fn update(
     repo: &PathBuf,
     current: impl IntoIterator<Item = Comment>,
     redditor: &str,
@@ -43,7 +43,7 @@ fn update<'a>(
 ) -> Result<usize, Box<Error>> {
     let comment_path = |c: &Comment| {
         let mut p = repo.clone();
-        for s in c.permalink.split("/") {
+        for s in c.permalink.split('/') {
             p.push(s);
         }
         p.set_extension("json");
@@ -55,7 +55,7 @@ fn update<'a>(
     let mut index = git.index()?;
     index.read(false)?;
     let (threshold, threshold_percent) = threshold;
-    let threshold_percent = threshold_percent as f32;
+    let threshold_percent = f32::from(threshold_percent);
     let head = || dbg!(git.find_commit(git.head()?.target().unwrap()));
     let mut parent = head()?;
     for comment in current.into_iter() {
@@ -81,9 +81,12 @@ fn update<'a>(
                     _ => true,
                 })
                 .collect::<Vec<_>>();
-            if delta.len() > 0 {
+            if !delta.is_empty() {
                 fs_write(&path, to_string_pretty(&comment)?)?;
-                commit_msg = delta.iter().map(|d| d.to_string()).collect::<Vec<_>>()[..].join("\n");
+                for msg in delta.iter() {
+                    commit_msg.push_str(&msg.to_string());
+                    commit_msg.push('\n');
+                }
                 //index.update_all(vec![&path], None)?;
                 updated += 1;
                 true
@@ -103,7 +106,7 @@ fn update<'a>(
             let tree_id = index.write_tree()?;
             let tree = git.find_tree(tree_id)?;
 
-            let time = commit_timestamp.unwrap_or(comment.last_update());
+            let time = commit_timestamp.unwrap_or_else(|| comment.last_update());
 
             let sig_backdate = Signature::new(sig.name().unwrap(), sig.email().unwrap(), &{
                 let dur = dbg!(time).duration_since(UNIX_EPOCH).unwrap();

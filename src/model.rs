@@ -46,8 +46,8 @@ impl fmt::Display for CommentDelta {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         use CommentDelta::*;
         match self {
-            Votes(d) if d > &0 => write!(f, "Received +{} upvotes", d),
-            Votes(d) if d < &0 => write!(f, "Received {} downvotes", d),
+            Votes(d) if *d > 0 => write!(f, "Received +{} upvotes", d),
+            Votes(d) if *d < 0 => write!(f, "Received {} downvotes", d),
             Votes(_) => write!(f, "You shouln't see this one, if you do check the source"),
             Content => write!(f, "Edited"),
             New => write!(f, "Created"),
@@ -103,7 +103,7 @@ impl Comments {
     pub fn new<T: ToString>(url: T) -> Comments {
         let url = url.to_string();
         Comments {
-            url: url,
+            url,
             continuation: None,
             buffer: None,
             no_it: 0,
@@ -127,7 +127,7 @@ impl Iterator for Comments {
             let comment_json: Value = serde_json::from_str(&comment_json)?;
             let data: &Value = &comment_json["data"];
             let continuation: Option<String> = match &data["after"] {
-                Value::String(after) if after.len() > 0 => Some(after.clone()),
+                Value::String(after) if !after.is_empty() => Some(after.clone()),
                 _ => None,
             };
             //Kinda ugly .clone()
