@@ -1,4 +1,3 @@
-#[allow(unused_imports)]
 #[macro_use]
 extern crate serde_derive;
 
@@ -8,8 +7,6 @@ use std::error::Error;
 use std::fs::{create_dir_all, read_to_string, write as fs_write};
 use std::iter::IntoIterator;
 use std::path::PathBuf;
-use std::thread;
-use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 mod model;
@@ -129,14 +126,4 @@ fn update(
     Ok(updated)
 }
 
-#[allow(dead_code)]
-fn poll(interval: Duration, count: Option<u32>) {
-    let mut it: u32 = 0;
-    loop {
-        thread::sleep(interval);
-        it += 1;
-        if count.map(|c| c < it).unwrap_or(false) {
-            break;
-        }
-    }
-}
+

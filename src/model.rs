@@ -22,7 +22,7 @@ impl Comment {
         let created = UNIX_EPOCH + Duration::from_secs(self.created as u64);
         let edited = self
             .edited
-            .filter(|e| e > &1)
+            .filter(|e|*e > 1)
             .map(|e| UNIX_EPOCH + Duration::from_secs(e));
         if let Some(edited) = edited {
             if edited > created {
@@ -48,7 +48,7 @@ impl fmt::Display for CommentDelta {
         match self {
             Votes(d) if *d > 0 => write!(f, "Received +{} upvotes", d),
             Votes(d) if *d < 0 => write!(f, "Received {} downvotes", d),
-            Votes(_) => write!(f, "You shouln't see this one, if you do check the source"),
+            Votes(_) => unreachable!("CommentDelta::Votes cannot be 0"),
             Content => write!(f, "Edited"),
             New => write!(f, "Created"),
         }
