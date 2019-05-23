@@ -23,13 +23,17 @@ RUN cargo build --release
 FROM ubuntu
 
 
-RUN apt update && apt install -y libcurl3 git -y && rm -rf /var/lib/{apt,dpkg,cache,log}
+RUN apt update && apt install -y libcurl3 git gitstats -y && rm -rf /var/lib/{apt,dpkg,cache,log}
 
 COPY --from=build /usr/src/gitredditor/target/release/gitredditor /usr/local/bin
 
 COPY --from=fs /usr/src/gitredditor/src /usr/src/gitredditor/src
 
-VOLUME /repo
+COPY --from=fs /usr/src/gitredditor/stats.sh /usr/local/bin/gitredditor-stats
+
+RUN chmod +x /usr/local/bin/gitredditor-stats
+
+VOLUME /repo /stats
 
 WORKDIR /repo
 

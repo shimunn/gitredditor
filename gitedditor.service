@@ -15,8 +15,8 @@ Restart=always
 
 ExecStartPre=/bin/bash -c "cd ${ROOT_DIR}/${GITREDDITOR_U} && /usr/bin/git pull"
 
-ExecStart=/usr/bin/rkt --insecure-options=image run --inherit-env --dns 8.8.8.8 --volume volume-repo,kind=host,source=${ROOT_DIR}/${GITREDDITOR_U} \
-                        docker://repo.shimun.net/shimun/gitredditor
+ExecStart=/usr/bin/rkt --insecure-options=image run --inherit-env --dns 8.8.8.8 --volume volume-repo,kind=host,source=${ROOT_DIR}/${GITREDDITOR_U} --volume volume-stats,kind=host,source=${ROOT_DIR}/stats/${GITREDDITOR_U} \
+                        docker://repo.shimun.net/shimun/gitredditor --exec sh -- -c 'gitredditor && gitredditor-stats'
                         
 ExecStopPost=/bin/bash -c "cd ${ROOT_DIR}/${GITREDDITOR_U} && /usr/bin/git push"
 
