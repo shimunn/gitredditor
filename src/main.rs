@@ -8,7 +8,6 @@ use std::fs::{create_dir_all, read_to_string, write as fs_write};
 use std::iter::IntoIterator;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
-
 mod model;
 mod opts;
 
@@ -48,13 +47,23 @@ fn update(
     };
     let mut updated: usize = 0;
     let git = Repository::open(&repo)?;
-    let sig = Signature::now(redditor, email)?;
+    let sig = match git.signature() {
+        Err(_) => Signature::now(redditor, email),
+        sig => sig,
+    }?;
     let mut index = git.index()?;
     index.read(false)?;
     let (threshold, threshold_percent) = threshold;
     let threshold_percent = f32::from(threshold_percent);
-    let head = || dbg!(git.find_commit(git.head()?.target().unwrap()));
-    let mut parent = head()?;
+    //let head: Option<git2::commit::Commit> = || git.head()?.target().map(|oid| git.find_commit(oid));
+    let head = || match git.head() {
+        Ok(head) => match head.target() {
+            Some(oid) => git.find_commit(oid).ok(),
+            None => None,
+        },
+        Err(_) => None,
+    };
+    let mut parent = head();
     for comment in current.into_iter() {
         let path = comment_path(&comment);
         let path_rel = || {
@@ -117,13 +126,11 @@ fn update(
                 &sig,
                 &commit_msg,
                 &tree,
-                &[&parent],
+                &parent.iter().collect::<Vec<_>>()[..], //TODO: this isnt ideal
             )?;
-            parent = head()?; //git.find_commit(commit)?;
+            parent = head(); //git.find_commit(commit)?;
             index.write()?;
         }
     }
     Ok(updated)
 }
-
-
