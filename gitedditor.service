@@ -13,6 +13,7 @@ Environment=ROOT_DIR=/srv/reddit
 RestartSec=7200
 Restart=always
 
+ExecStartPre=/bin/bash -c "cd ${ROOT_DIR}/${GITREDDITOR_U} && /usr/bin/git config user.name ${GITREDDITOR_U} && /usr/bin/git config user.email reddit.com/u/${GITREDDITOR_U}"
 ExecStartPre=/bin/bash -c "cd ${ROOT_DIR}/${GITREDDITOR_U} && /usr/bin/git pull"
 
 ExecStart=/usr/bin/rkt --insecure-options=image run --inherit-env --dns 8.8.8.8 --volume volume-repo,kind=host,source=${ROOT_DIR}/${GITREDDITOR_U} --volume volume-stats,kind=host,source=${ROOT_DIR}/stats/${GITREDDITOR_U} \
