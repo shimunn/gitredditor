@@ -55,7 +55,6 @@ fn update(
     index.read(false)?;
     let (threshold, threshold_percent) = threshold;
     let threshold_percent = f32::from(threshold_percent);
-    //let head: Option<git2::commit::Commit> = || git.head()?.target().map(|oid| git.find_commit(oid));
     let head = || match git.head() {
         Ok(head) => match head.target() {
             Some(oid) => git.find_commit(oid).ok(),
@@ -93,7 +92,6 @@ fn update(
                     commit_msg.push_str(&msg.to_string());
                     commit_msg.push('\n');
                 }
-                //index.update_all(vec![&path], None)?;
                 updated += 1;
                 true
             } else {
@@ -102,7 +100,6 @@ fn update(
         } else {
             create_dir_all((&path).parent().unwrap())?;
             fs_write(&path, to_string_pretty(&comment)?)?;
-            //index.add_all(vec![&path], git2::IndexAddOption::DEFAULT, None)?;
             commit_msg = CommentDelta::New.to_string();
             updated += 1;
             true
@@ -120,7 +117,7 @@ fn update(
             })?;
 
             println!("Commiting: {}:\n{}", comment.id, commit_msg);
-            let _commit = git.commit(
+            let commit = git.commit(
                 Some("HEAD"),
                 &sig_backdate,
                 &sig,
@@ -128,9 +125,10 @@ fn update(
                 &tree,
                 &parent.iter().collect::<Vec<_>>()[..], //TODO: this isnt ideal
             )?;
-            parent = head(); //git.find_commit(commit)?;
-            index.write()?;
+            parent = Some(git.find_commit(commit)?);
         }
     }
+    index.write()?;
+
     Ok(updated)
 }
