@@ -21,7 +21,7 @@ fn main() {
     println!(
         "Hello, world! {:?}",
         update(
-            &opts.repo.unwrap(),
+            &opts.repo.unwrap_or(PathBuf::from("repo")),
             comments.take(opts.fetch).flatten(),
             &opts.redditor,
             &("reddit.com/u/".to_owned() + &opts.redditor),
