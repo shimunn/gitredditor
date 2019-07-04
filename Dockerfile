@@ -2,7 +2,7 @@ FROM scratch AS fs
 
 COPY . /usr/src/gitredditor
 
-FROM rust:1.34.1 AS build
+FROM rust:1.35 AS build
 
 WORKDIR /usr/src/
 
